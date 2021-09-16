@@ -15,9 +15,11 @@ library(arm)
 
 ## Example 1: Poisson GLM
 
-I found this dataset breaking down the number of gun homicides by state population in 2010 and wanted to assess whether or not a Poisson model could be used to explain the data well. 
+I found this dataset breaking down the number of gun homicides by state population in 2010 and wanted to analyze the relationship between a state's population and its number of gun homicides (I know, depressing). 
 
-<span style="color:red;font-size:15px">Data: Gun murders in the United States by state in 2010 ("murders" dataset from "dslabs"). </span>
+Because this dataset represent non-continuous count data, I began with the assumption that a Poisson model could be used to explain the data well. 
+
+**Data: Gun murders in the United States by state in 2010 ("murders" dataset from "dslabs").** 
 
 ![](images/gun_map.png)
 
@@ -40,7 +42,7 @@ guns.glm <- glm(total ~ population, data = guns, family = poisson)
 
 ggplot(guns, aes(population, total)) +
   geom_point(size=3) +
-  geom_smooth (method=lm, color="red") + #if you wanted to see the gaussian/identity fit
+  #geom_smooth (method=lm, color="red") + #if you wanted to see the gaussian/identity fit
   stat_smooth(method = glm, method.args = list(family = poisson(link = "log"))) +
   xlab ("Population") +
   ylab ("Number of Gun Homicides") + 
@@ -50,9 +52,7 @@ ggplot(guns, aes(population, total)) +
 
 $~$
 
-If the fitted Poisson model were reflective of the data we might expect to see an increase in per capita gun homicides for larger states (by population) relative to smaller ones. However, at first glance the gaussian fit appears to be more appropriate for this dataset. 
-
-For now, I decided to press on with the Poisson model. 
+It's not a great fit and there appears to me a lot of deviance from the model, but the model may be a better fit for many of the smaller states (lower on the model curve). 
 
 $~$
 
@@ -65,19 +65,19 @@ autoplot(guns.glm)
 
 $~$
 
-Residuals-fitted --> *Pattern driven by several points on the right indicates an issue with the model?* 
+**Residuals-fitted** --> *Pattern driven by several points on the right indicates an issue with the model?* 
 
 $~$
 
-Normal Q-Q --> *Slight deviation at either end, but overall 'OK'. Point 5 is perhaps slightly concerning, though.* 
+**Normal Q-Q** --> *Slight deviation at either end, but overall 'OK'. Point 5 is perhaps slightly concerning, though.* 
 
 $~$
 
-Scale-location plot --> *Slight positive relationship between the size of the residuals and the fitted values, driven by really one point, indicates that the Poisson might not be the best model.* 
+**Scale-location plot** --> *Slight positive relationship between the size of the residuals and the fitted values, driven by really one point, indicates that the Poisson might not be the best model.* 
 
 $~$
 
-Residuals-leverage --> *Seems worrying.* 
+**Residuals-leverage** --> *Seems worrying.* 
 
 $~$
 
@@ -88,7 +88,7 @@ $~$
 <span style="color:black;font-size:30px">1.3 Deviance table </span>
 
 
-Next, I used the anove() function to get the deviance table. 
+Next, I used the anova() function to get the deviance table. 
 
 ```{r guns: deviance table}
 anova(guns.glm)
@@ -123,22 +123,25 @@ summary(guns.qpois)
 
 The quasi-Poisson didn't achieve any better of a ratio between the residual deviance and our degrees of freedom, but with a higher dispersion pattern we would expect it to take more of the overdispersion into account. Additionally, the highly significant and rounded nature of the p-values in the summary table doesn't allow us to make comparisons there, either. 
 
-Therefore, I wanted to use AIC to compare our Poisson, quasi-Poisson, and a gaussian fit. 
+But what about a Gaussian GLM? 
 
 $~$
 
-<span style="color:black;font-size:30px">1.6 Gaussian fit and Akaike Information Criterion </span>
+<span style="color:black;font-size:30px">1.6 Gaussian model fit and visualization </span>
 
-```{r guns: linear model formation and AIC}
+```{r guns: gaussian model formation and plot}
 guns.glm.gaussian <- glm(total~population, family=gaussian(link="identity"), data = guns)
-AIC(guns.glm, guns.qpois, guns.glm.gaussian)
+ggplot(guns, aes(population, total)) +
+  geom_point(size=3) +
+  geom_smooth (method=lm, color="red") + #if you wanted to see the gaussian/identity fit
+  stat_smooth(method = glm, method.args = list(family = poisson(link = "log"))) +
+  xlab ("Population") +
+  ylab ("Number of Gun Homicides") + 
+  labs(caption="Figure 1: A Poisson Regression model (blue) of gun homicides per state by population in 2010.") + 
+  theme(plot.caption=element_text(size=10, hjust=0, margin=margin(15,0,0,0)))
 ```
 
-The AIC scores tell us that the gaussian model is by far a better model for explaining our data. Although AIC can't be used to compare a quasi-Poisson to other models, it's unlikely that its ability ot account for more overdispersion would have made it a better model than our gaussian fit. 
-
-(quasi-Poisson has no corresponding likelihood; not an actual maximum likelihood model)
-
-Therefore, go gaussian! 
+The Gaussian model LOOKS good, but let's look at the summary table
 
 $~$
 
@@ -150,7 +153,18 @@ summary(guns.glm.gaussian)
 
 $~$
 
-Very slight (but highly significant) increase in the number of gun homicides in each state for every person added to a state's population. Makes sense!
+
+The Gaussian model has even MORE unexplained deviance from the model than our Poisson or quasi-Poisson. Therefore, I decided that the **quasi-Poisson** explains this data the best out of our considered models as it has less unexplained variance compared to the Gaussian and accounts for more overdispersion than our basic Poisson model. 
+
+$~$
+
+<span style="color:black;font-size:30px">1.8 Prediction for a state of 30,000,000. </span>
+
+```{r guns: prediction}
+exp(4.449e+00 + 8.234e-08*3e7)
+```
+
+**For a state of 30,000,000 people, we would expect about 1,012 gun homicides (based on our model).** 
 
 $~$
 
@@ -158,7 +172,7 @@ $~$
 
 I decided to analyze a "bird" dataset that I had used previously and that contains several binomial variates. The collectors of the dataset measured the presence or absence of a species of bird at many sampled locations and simultaneously measured several characteristics of the sample sites. 
 
-I was interested in using a binomial GLM to assess the ability of the elevation of each site to explain the bird's presence or absence. 
+I was interested in using a binomial GLM to assess the relationship between the elevation at a sample site and the likelihood of finding this species.
 
 $~$
 
@@ -229,16 +243,7 @@ Assuming significance, it appears that every unit increase in elevation means th
 
 $~$
 
-<span style="color:black;font-size:30px">2.6 Back-calculating coefficients </span>
-
-```{r birds: back-calculating}
-invlogit <- function(x) {1 / ( 1+exp(-x) ) } 
-invlogit(coef(birds.glm))
-```
-
-$~$ 
-
-<span style="color:black;font-size:30px">2.7 Assessing significance </span>
+<span style="color:black;font-size:30px">2.6 Assessing significance </span>
 
 ```{r birds: assessing significance}
 confint(birds.glm)
@@ -247,7 +252,18 @@ summary(birds.glm)
 
 $~$
 
-Our confidence intervals cotain 0 and we have non-significant p-values. Therefore, there's likely not a significant effect of elevation on the presence of this species.
+Our confidence intervals cotain 0 and we have non-significant p-values. **Therefore, there's likely not a significant effect of elevation on the presence of this species.**
 
 $~$
+
+<span style="color:black;font-size:30px">2.7 Back-calculating coefficients </span>
+
+```{r birds: back-calculating}
+invlogit <- function(x) {1 / ( 1+exp(-x) ) } 
+invlogit(coef(birds.glm))
+```
+
+*Not particularly important given our confidence intervals non-significant p-values.*
+
+$~$ 
 
