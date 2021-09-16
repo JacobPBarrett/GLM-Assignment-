@@ -1,0 +1,253 @@
+---
+title: "GLM Assignment"
+author: "Jake Barrett"
+date: "9/14/2021"
+output: html_document
+---
+
+```{r setup, include=TRUE}
+library(ggplot2)
+library(ggfortify)
+library(dslabs)
+library(datasets)
+library(arm)
+```
+
+## Example 1: Poisson GLM
+
+I found this dataset breaking down the number of gun homicides by state population in 2010 and wanted to assess whether or not a Poisson model could be used to explain the data well. 
+
+<span style="color:red;font-size:15px">Data: Gun murders in the United States by state in 2010 ("murders" dataset from "dslabs"). </span>
+
+![](images/gun_map.png)
+
+$~$
+
+<span style="color:black;font-size:30px">1.1 Model formation and visualization </span>
+
+$~$
+
+To begin, I read in my data and formulated my model. I decided to use a GLM with a Poisson distribution as the data is essentially count data broken up by state. 
+
+Next, I visualized my data by fitting a Poisson distribution to it using "stat_smooth" with the ggplot() function.    
+
+$~$
+
+```{r guns: import data, form model, and plot}
+guns <- murders
+
+guns.glm <- glm(total ~ population, data = guns, family = poisson)
+
+ggplot(guns, aes(population, total)) +
+  geom_point(size=3) +
+  geom_smooth (method=lm, color="red") + #if you wanted to see the gaussian/identity fit
+  stat_smooth(method = glm, method.args = list(family = poisson(link = "log"))) +
+  xlab ("Population") +
+  ylab ("Number of Gun Homicides") + 
+  labs(caption="Figure 1: A Poisson Regression model (blue) of gun homicides per state by population in 2010.") + 
+  theme(plot.caption=element_text(size=10, hjust=0, margin=margin(15,0,0,0)))
+```
+
+$~$
+
+If the fitted Poisson model were reflective of the data we might expect to see an increase in per capita gun homicides for larger states (by population) relative to smaller ones. However, at first glance the gaussian fit appears to be more appropriate for this dataset. 
+
+For now, I decided to press on with the Poisson model. 
+
+$~$
+
+<span style="color:black;font-size:30px">1.2 Poisson model diagnostic plots </span>
+
+
+```{r guns: diagnose formulated model, include = TRUE}
+autoplot(guns.glm)
+```
+
+$~$
+
+Residuals-fitted --> *Pattern driven by several points on the right indicates an issue with the model?* 
+
+$~$
+
+Normal Q-Q --> *Slight deviation at either end, but overall 'OK'. Point 5 is perhaps slightly concerning, though.* 
+
+$~$
+
+Scale-location plot --> *Slight positive relationship between the size of the residuals and the fitted values, driven by really one point, indicates that the Poisson might not be the best model.* 
+
+$~$
+
+Residuals-leverage --> *Seems worrying.* 
+
+$~$
+
+Overall, there are a couple of reasons to be concerned about the fit of our Poisson model to the data. For now, let's look at the deviance table. 
+
+$~$
+
+<span style="color:black;font-size:30px">1.3 Deviance table </span>
+
+
+Next, I used the anove() function to get the deviance table. 
+
+```{r guns: deviance table}
+anova(guns.glm)
+```
+
+As you can see, there is quite a lot of unexplained deviance in this model fit. The deviance explained by population is 7814 units, the unaccounted-for deviance is 3782 units, and the total deviance from the model is 11596.  
+
+Next, let's look at the summary table...
+
+$~$
+
+<span style="color:black;font-size:30px">1.4 Summary table </span>
+
+
+```{r guns: summary table}
+summary(guns.glm)
+```
+
+The high z-value (105) indicates that the estimate for the effect of population on the number of gun homicides is significantly different from 0. However, the extremely high ratio of our residual deviance (3782) to the degrees of freedom (49) tells us that our model is overdispersed. 
+
+In order to try and account for some of the residual deviance I decided to formulate and view the summary table for a quasi-Poisson. 
+
+$~$
+
+<span style="color:black;font-size:30px">1.5 Quasi-Poisson formation and analysis </span>
+
+
+```{r guns: quasipoisson}
+guns.qpois <- glm(total ~ population, quasipoisson, data= guns)
+summary(guns.qpois)
+```
+
+The quasi-Poisson didn't achieve any better of a ratio between the residual deviance and our degrees of freedom, but with a higher dispersion pattern we would expect it to take more of the overdispersion into account. Additionally, the highly significant and rounded nature of the p-values in the summary table doesn't allow us to make comparisons there, either. 
+
+Therefore, I wanted to use AIC to compare our Poisson, quasi-Poisson, and a gaussian fit. 
+
+$~$
+
+<span style="color:black;font-size:30px">1.6 Gaussian fit and Akaike Information Criterion </span>
+
+```{r guns: linear model formation and AIC}
+guns.glm.gaussian <- glm(total~population, family=gaussian(link="identity"), data = guns)
+AIC(guns.glm, guns.qpois, guns.glm.gaussian)
+```
+
+The AIC scores tell us that the gaussian model is by far a better model for explaining our data. Although AIC can't be used to compare a quasi-Poisson to other models, it's unlikely that its ability ot account for more overdispersion would have made it a better model than our gaussian fit. 
+
+(quasi-Poisson has no corresponding likelihood; not an actual maximum likelihood model)
+
+Therefore, go gaussian! 
+
+$~$
+
+<span style="color:black;font-size:30px">1.7 Gaussian summary table </span>
+
+```{r guns: gaussian summary table}
+summary(guns.glm.gaussian)
+```
+
+$~$
+
+Very slight (but highly significant) increase in the number of gun homicides in each state for every person added to a state's population. Makes sense!
+
+$~$
+
+## Example 2: Binomial GLM
+
+I decided to analyze a "bird" dataset that I had used previously and that contains several binomial variates. The collectors of the dataset measured the presence or absence of a species of bird at many sampled locations and simultaneously measured several characteristics of the sample sites. 
+
+I was interested in using a binomial GLM to assess the ability of the elevation of each site to explain the bird's presence or absence. 
+
+$~$
+
+<span style="color:black;font-size:30px">2.1 Binomial formation and data visualization </span>
+
+```{r birds: import data, form model, and plot}
+birds <- read.csv("bird_data.csv")
+
+birds.glm <- glm(Presence~Elevation, data=birds, binomial(link="logit"))
+
+ggplot(birds, aes(Elevation, Presence)) +
+  geom_point() + 
+  geom_smooth() +
+  xlab ("Elevation") +
+  ylab ("Status (0 = Absent, 1 = Present)") + 
+  labs(caption="Figure 2: A Binomial Regression model of the presence or absence of a bird species at sampled plots by elevation.") + 
+  theme(plot.caption=element_text(size=10, hjust=0, margin=margin(15,0,0,0)))
+```
+
+<span style="color:black;font-size:30px">2.2 Binomial formation and data visualization </span>
+
+```{r birds: plot binomial model }
+ggplot(birds, aes(Elevation, Presence)) +
+  geom_point() + 
+  geom_smooth(method="glm", method.args=list(family="binomial"(link="logit"))) +
+  xlab ("Elevation") +
+  ylab ("Status (0 = Absent, 1 = Present)") + 
+  labs(caption="Figure 2: A Binomial Regression model of the presence or absence of a bird species at sampled plots by elevation.") + 
+  theme(plot.caption=element_text(size=10, hjust=0, margin=margin(15,0,0,0)))
+```
+
+
+
+$~$
+
+<span style="color:black;font-size:30px">2.3 Diagnostic plots </span>
+
+```{r birds: diagnostic plots}
+autoplot(birds.glm)
+```
+
+As we would expect, not helpful due to the binary, restricted nature of binomial data.
+
+Use binnedplot() to graphically assess the model for overdispersion!
+
+$~$
+
+<span style="color:black;font-size:30px">2.4 Binnedplot </span>
+
+```{r birds: binned}
+x <- predict(birds.glm)
+y <- resid(birds.glm)
+binnedplot(x, y)
+```
+
+As can be seen in the resulting plot, nearly all of the residuals fall within +/- two standard errors. 
+
+$~$
+
+<span style="color:black;font-size:30px">2.5 Coefficients and confidence intervals </span>
+
+```{r coefficients: birds.glm}
+coef(birds.glm)
+confint(birds.glm)
+```
+
+Assuming significance, it appears that every unit increase in elevation means that this bird species is less likely to be found at that site. 
+
+$~$
+
+<span style="color:black;font-size:30px">2.6 Back-calculating coefficients </span>
+
+```{r birds: back-calculating}
+invlogit <- function(x) {1 / ( 1+exp(-x) ) } 
+invlogit(coef(birds.glm))
+```
+
+$~$ 
+
+<span style="color:black;font-size:30px">2.7 Assessing significance </span>
+
+```{r birds: assessing significance}
+confint(birds.glm)
+summary(birds.glm)
+```
+
+$~$
+
+Our confidence intervals cotain 0 and we have non-significant p-values. Therefore, there's likely not a significant effect of elevation on the presence of this species.
+
+$~$
+
